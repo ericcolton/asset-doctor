@@ -1,3 +1,7 @@
+'''
+Author: Eric Colton
+Copyright (c) 2020 Eric Colton
+'''
 
 class PriceLookup:
     def __init__(self):

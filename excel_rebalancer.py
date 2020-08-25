@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+'''
+Author: Eric Colton
+Copyright (c) 2020 Eric Colton
+'''
 
 import sys
 import re
@@ -119,7 +123,7 @@ def capture_rounding_behavior() -> RoundingBehavior:
         return RoundingBehavior.UP
     elif line[0] == '-':
         return RoundingBehavior.DOWN
-    raise Exception(f"Unrecognized rounding behavior '{line[0]}'")
+    raise Exception(f"Unrecognized rounding behavior '{line}'")
 
 def capture_rebalance_options(live_portfolio_value: float) -> RebalanceOptions:
     desired_portfolio_value = capture_desired_portfolio_value(live_portfolio_value)

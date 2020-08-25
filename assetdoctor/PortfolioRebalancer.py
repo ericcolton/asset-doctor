@@ -1,3 +1,7 @@
+'''
+Author: Eric Colton
+Copyright (c) 2020 Eric Colton
+'''
 
 import math
 from enum import Enum

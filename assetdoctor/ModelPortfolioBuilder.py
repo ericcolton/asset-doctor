@@ -1,3 +1,7 @@
+'''
+Author: Eric Colton
+Copyright (c) 2020 Eric Colton
+'''
 
 from collections import namedtuple
 from assetdoctor import Portfolio, Position, PriceLookup
