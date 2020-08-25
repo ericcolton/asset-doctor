@@ -4,7 +4,7 @@ Copyright (c) 2020 Eric Colton
 '''
 
 from collections import namedtuple
-from assetdoctor import Portfolio, Position, PriceLookup
+from . import Portfolio, Position, PriceLookup
 
 ModelPosition = namedtuple('ModelPosition', ['ticker', 'target_percentage'])
 

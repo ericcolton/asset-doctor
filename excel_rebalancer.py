@@ -8,14 +8,14 @@ import sys
 import re
 from collections import namedtuple, defaultdict
 from assetdoctor import PriceLookup, Portfolio, Position, ModelPosition, PortfolioRebalancer, \
-    ModelPortfolioBuilder, RoundingBehavior, RebalanceOptions
+    ModelPortfolioBuilder, RoundingBehavior, RebalanceOptions, RebalanceInstruction, TransactionType
 
 VALUE_TOLERANCE = 10
 PERCENT_TOLERANCE = 0.01
 
 SummaryRecord = namedtuple('Record', ['ticker', 'target_percentage', 'balanced_amount', 'actual_amount'])
 ImplementationRecord = namedtuple('ImplementationRecord', ['ticker', 'price', 'quantity'])
-RebalanceInstruction = namedtuple('RebalanceInstruction', ['ticker','op','quantity_str', 'shares_str', 'sign', 'value_str'])
+FormattedRebalanceInstruction = namedtuple('FormattedRebalanceInstruction', ['ticker','op','quantity_str', 'plural_s', 'sign', 'value_str'])
 
 class NoImplmentationRecordException(Exception):
     pass
@@ -36,7 +36,7 @@ def build_live_portfolio(implementation_lookup: dict) -> Portfolio:
     return portfolio
 
 def build_model_portfolio(options: RebalanceOptions, summary_records: list, implementation_lookup: dict, prices: PriceLookup) -> Portfolio:
-    builder = ModelPortfolioBuilder(options.desired_total_value, prices, PERCENT_TOLERANCE)
+    builder = ModelPortfolioBuilder(options.target_total_value, prices, PERCENT_TOLERANCE)
     for sr in summary_records:
         if sr.target_percentage > 0:
             builder.add_model_position(ModelPosition(sr.ticker, sr.target_percentage))
@@ -102,11 +102,15 @@ def capture_desired_portfolio_value(live_portfolio_value: float) -> float:
     else:
         return value_specified
 
+def capture_allow_share_exchanges() -> bool:
+    print("Allow share exchanges (yes/NO)?: ", end = '')
+    line = sys.stdin.readline()
+    return line[0].lower() == 'y'
+
 def capture_allow_fractional_shares() -> bool:
     print("Allow fractional shares (yes/NO)?: ", end = '')
     line = sys.stdin.readline()
-    answer = line[0].lower() == 'y'
-    return answer
+    return line[0].lower() == 'y'
 
 def capture_rounding_behavior() -> RoundingBehavior:
     print("")
@@ -127,9 +131,10 @@ def capture_rounding_behavior() -> RoundingBehavior:
 
 def capture_rebalance_options(live_portfolio_value: float) -> RebalanceOptions:
     desired_portfolio_value = capture_desired_portfolio_value(live_portfolio_value)
-    allow_fractional_shares = capture_allow_fractional_shares()
+    allow_share_exchanges = capture_allow_share_exchanges()
+    allow_fractional_shares = True if allow_share_exchanges else capture_allow_fractional_shares()
     rounding_behavior = RoundingBehavior.NEAREST if allow_fractional_shares else capture_rounding_behavior()
-    return RebalanceOptions(desired_portfolio_value, allow_fractional_shares, rounding_behavior)
+    return RebalanceOptions(desired_portfolio_value, allow_share_exchanges, allow_fractional_shares, rounding_behavior)
 
 def capture_summary_records():
     print('''Expected Format (columns seperated by tabs):
@@ -257,21 +262,23 @@ def output_rebalance_instructions(rebalancer: PortfolioRebalancer, prices: Price
     
     print("Rebalance Instructions:")
     sorter = defaultdict(set)
-    for ticker, quantity in instructions.items():
-        if quantity != 0:
-            sorter[prices.get_price(ticker) * quantity].add(ticker)
+    for instr in instructions:
+        if instr.quantity != 0:
+            value = prices.get_price(instr.ticker) * instr.quantity
+            if instr.transaction_type == TransactionType.SELL:
+                value *= -1
+            sorter[value].add(instr)
 
     formatted_instructions = []
     for value in sorted(sorter.keys()):
-        for ticker in sorter[value]:
-            quantity = instructions[ticker]
-            quantity_str = f"{abs(quantity):,.2f}" if rebalancer.options.allow_fractional_shares else f"{int(abs(quantity)):,}"
-            value = quantity * prices.get_price(ticker)
-            op = "BUY" if quantity > 0 else "SELL"
-            sign = "" if quantity > 0 else "-"
-            shares_str = "share" if abs(quantity) == 1.0 else "shares"
+        for instr in sorter[value]:
+            quantity_str = f"{abs(instr.quantity):,.2f}" if rebalancer.options.allow_fractional_shares else f"{int(abs(instr.quantity)):,}"
+            value = abs(value)
+            op = instr.transaction_type.name
+            sign = "-" if instr.transaction_type == TransactionType.SELL else ""
+            plural_s = "" if abs(instr.quantity) == 1.0 else "s"
             value_str = f"{abs(value):,.2f}"
-            formatted_instructions.append(RebalanceInstruction(ticker, op, quantity_str, shares_str, sign, value_str))
+            formatted_instructions.append(FormattedRebalanceInstruction(instr.ticker, op, quantity_str, plural_s, sign, value_str))
 
     print("")
     max_value_len = max([len(i.value_str) for i in formatted_instructions])
@@ -282,8 +289,7 @@ def output_rebalance_instructions(rebalancer: PortfolioRebalancer, prices: Price
             sign_justified = "-" if i.sign == '-' else " "
         else:
             sign_justified = ""
-        print(f"\t{i.ticker}\t{i.op}\t{i.quantity_str}\t{i.shares_str}\t({sign_justified}${value_justified})")
-    
+        print(f"\t{i.ticker}\t{i.op}\t{i.quantity_str}\tshare{i.plural_s}\t({sign_justified}${value_justified})")
 
 def output_rebalance_summary(rebalancer: PortfolioRebalancer, prices: PriceLookup) -> None:
     print("")
@@ -304,9 +310,11 @@ def output_rebalance_summary(rebalancer: PortfolioRebalancer, prices: PriceLooku
         f"\tvs target value:\t${target_value_str}\n"
         f"\tvs current value:\t${live_value_str}\n")
 
+    allow_share_exchanges = "YES" if rebalancer.options.allow_share_exchanges else "NO"
     print("Options Applied:")
+    print(f"\tAllow Share Exchanges: {allow_share_exchanges}")
     if rebalancer.options.allow_fractional_shares:
-        print("Fractional Shares: YES")
+        print("\tFractional Shares: YES")
     else:
         print("\tFractional Shares: NO")
         print(f"\tRounding Behavior: {rebalancer.options.rounding_behavior.name}")

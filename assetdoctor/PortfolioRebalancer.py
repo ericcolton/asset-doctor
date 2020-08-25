@@ -5,10 +5,16 @@ Copyright (c) 2020 Eric Colton
 
 import math
 from enum import Enum
-from collections import namedtuple
-from assetdoctor import Portfolio, Position
+from collections import namedtuple, deque, defaultdict
+from . import Portfolio, Position
 
-RebalanceOptions = namedtuple('RebalanceOptions', ['desired_total_value', 'allow_fractional_shares', 'rounding_behavior'])
+RebalanceOptions = namedtuple('RebalanceOptions', ['target_total_value', 'allow_share_exchanges', 'allow_fractional_shares', 'rounding_behavior'])
+RebalanceInstruction = namedtuple('RebalanceInstruction', ['ticker', 'transaction_type', 'quantity', 'exchange_ticker', 'exchange_quantity'])
+
+class TransactionType(Enum):
+    BUY = 'BUY'
+    SELL = 'SELL'
+    EXCHANGE = 'EXCHANGE'
 
 class RoundingBehavior(Enum):
     UP = 'UP'
@@ -28,11 +34,18 @@ class PortfolioRebalancer:
     def set_model_portfolio(self, model_portfolio: Portfolio):
         self.model_portfolio = model_portfolio
 
-    def build_rebalance_instructions(self) -> dict:
+    def build_rebalance_instructions(self) -> list:
         if not (self.live_portfolio and self.model_portfolio):
             raise Exception("live_portfolio and model_portfolio must both be set")
 
-        delta_shares = {}
+        instructions = []
+        if self.options.allow_share_exchanges:
+            live_portfolio = self.live_portfolio.deepcopy()
+            model_portfolio = self.model_portfolio.deepcopy()
+        else:
+            live_portfolio = self.live_portfolio
+            model_portfolio = self.model_portfolio
+
         for mp_ticker in self.model_portfolio.all_tickers():
             mp_quantity = self.model_portfolio.get_quantity(mp_ticker)
             live_quantity = self.live_portfolio.get_quantity(mp_ticker)
@@ -46,23 +59,33 @@ class PortfolioRebalancer:
                     ticker_delta = math.floor(ticker_delta)
                 else:
                     raise Exception("Rounding behavior required but not specified")
-            delta_shares[mp_ticker] = ticker_delta
+            direction = TransactionType.BUY if ticker_delta > 0 else TransactionType.SELL
+            instructions.append(RebalanceInstruction(mp_ticker, direction, abs(ticker_delta), None, None))
 
-        for live_ticker in self.live_portfolio.all_tickers():
-            if not self.model_portfolio.contains_ticker(live_ticker):
-                delta_shares[live_ticker] = -1 * self.live_portfolio.get_quantity(live_ticker)
-        return delta_shares
+        for live_ticker in live_portfolio.all_tickers():
+            if not model_portfolio.contains_ticker(live_ticker):
+                instructions.append(RebalanceInstruction(live_ticker, TransactionType.SELL, self.live_portfolio.get_quantity(live_ticker), None, None))
+        return instructions
 
     def build_rebalanced_portfolio(self) -> Portfolio:
         instructions = self.build_rebalance_instructions()
-        rebalanced_portfolio = Portfolio()
+        rebalanced = defaultdict(float)
         for ticker in self.live_portfolio.all_tickers():
-            adjusted_quantity = self.live_portfolio.get_quantity(ticker)
-            if ticker in instructions:
-                adjusted_quantity += instructions[ticker]
-                del instructions[ticker]
-            if adjusted_quantity != 0.0:
-                rebalanced_portfolio.add_position(Position(ticker, adjusted_quantity))
-        for ticker in instructions.keys():
-            rebalanced_portfolio.add_position(Position(ticker, instructions[ticker]))
+            rebalanced[ticker] = self.live_portfolio.get_quantity(ticker)
+        
+        for i in instructions:
+            if i.transaction_type == TransactionType.BUY:
+                rebalanced[i.ticker] += i.quantity
+            elif i.transaction_type == TransactionType.SELL:
+                rebalanced[i.ticker] -= i.quantity
+            elif i.transaction_type == TransactionType.EXCHANGE:
+                rebalanced[i.ticker] -= i.quantity
+                rebalanced[i.exchange_ticker] += i.exchange_quantity
+            else:
+                raise Exception(f"Unexpected transaction type: '{i.transaction_type}'")
+            
+        rebalanced_portfolio = Portfolio()
+        for ticker, quantity in rebalanced.items():
+            if quantity != 0.0:
+                rebalanced_portfolio.add_position(Position(ticker, quantity))
         return rebalanced_portfolio

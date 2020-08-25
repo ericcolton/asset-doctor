@@ -4,7 +4,7 @@ Copyright (c) 2020 Eric Colton
 '''
 
 from collections import namedtuple
-from assetdoctor import PriceLookup
+from . import PriceLookup
 
 Position = namedtuple('Position', ['ticker', 'quantity'])
 
@@ -28,7 +28,7 @@ class Portfolio:
     def contains_ticker(self, ticker: str):
         return ticker in self.positions
 
-    def all_tickers(self):
+    def all_tickers(self) -> list:
         return self.positions.keys()
 
     def calc_total_value(self, prices: PriceLookup):
