@@ -2,146 +2,21 @@
 
 import sys
 import re
-import math
-from enum import Enum
 from collections import namedtuple, defaultdict
-
-
-class RoundingBehavior(Enum):
-    UP = 'UP'
-    DOWN = 'DOWN'
-    NEAREST = 'NEAREST'
+from assetdoctor import PriceLookup, Portfolio, Position, ModelPosition, PortfolioRebalancer, \
+    ModelPortfolioBuilder, RoundingBehavior, RebalanceOptions
 
 VALUE_TOLERANCE = 10
 PERCENT_TOLERANCE = 0.01
 
 SummaryRecord = namedtuple('Record', ['ticker', 'target_percentage', 'balanced_amount', 'actual_amount'])
 ImplementationRecord = namedtuple('ImplementationRecord', ['ticker', 'price', 'quantity'])
-Position = namedtuple('Position', ['ticker', 'quantity'])
-ModelPosition = namedtuple('ModelPosition', ['ticker', 'target_percentage'])
-RebalanceOptions = namedtuple('RebalanceOptions', ['desired_total_value', 'allow_fractional_shares', 'rounding_behavior'])
 RebalanceInstruction = namedtuple('RebalanceInstruction', ['ticker','op','quantity_str', 'shares_str', 'sign', 'value_str'])
 
 class NoImplmentationRecordException(Exception):
     pass
 class UnusedImplmentationRecordException(Exception):
     pass
-
-class PriceLookup:
-    def __init__(self):
-        self.prices = {}
-
-    def add_price(self, ticker, price):
-        if ticker in self.prices:
-            raise Exception(f"Ticker '{ticker}' was already added")
-        self.prices[ticker] = price
-
-    def get_price(self, ticker):
-        if ticker not in self.prices:
-            raise Exception(f"Ticker '{ticker}' has associated price")
-        return self.prices[ticker]
-
-class Portfolio:
-
-    def __init__(self):
-        self.positions = {}
-
-    def add_position(self, position: Position):
-        ticker = position.ticker
-        if position.ticker in self.positions:
-            raise Exception(f"Ticker '{ticker}' was already added")
-        self.positions[ticker] = position
-
-    def get_quantity(self, ticker: str):
-        if ticker in self.positions:
-            return self.positions[ticker].quantity
-        else:
-            return 0
-
-    def contains_ticker(self, ticker: str):
-        return ticker in self.positions
-
-    def all_tickers(self):
-        return self.positions.keys()
-
-    def calc_total_value(self, prices: PriceLookup):
-        return sum([prices.get_price(p.ticker) * p.quantity for p in self.positions.values()])
-
-class ModelPortfolioBuilder:
-    def __init__(self, target_value: float, prices: PriceLookup):
-        self.prices = prices
-        self.target_value = target_value
-        self.model_positions = {}
-
-    def add_model_position(self, model_position: ModelPosition):
-        ticker = model_position.ticker
-        if ticker in self.model_positions:
-            raise Exception(f"Ticker '{ticker}' was already added in model positions")
-        self.model_positions[ticker] = model_position
-
-    def generate_model_portfolio(self):
-        if abs(sum([mp.target_percentage for mp in self.model_positions.values()]) - 100) > PERCENT_TOLERANCE:
-            raise Exception("Sum of model portfolio target_percentages does not sum to 100%")
-
-        portfolio = Portfolio()
-        for mp in self.model_positions.values():
-            price = self.prices.get_price(mp.ticker)
-            quantity = (self.target_value * mp.target_percentage / 100) / price
-            if quantity > 0:
-                portfolio.add_position(Position(mp.ticker, quantity))
-        return portfolio
-
-class PortfolioRebalancer:
-
-    def __init__(self, options: RebalanceOptions):
-        self.options = options
-        self.live_portfolio = None
-        self.model_portfolio = None
-
-    def set_live_portfolio(self, live_portfolio: Portfolio):
-        self.live_portfolio = live_portfolio
-
-    def set_model_portfolio(self, model_portfolio: Portfolio):
-        self.model_portfolio = model_portfolio
-
-    def build_rebalance_instructions(self) -> dict:
-        if not (self.live_portfolio and self.model_portfolio):
-            raise Exception("live_portfolio and model_portfolio must both be set")
-
-        delta_shares = {}
-        for mp_ticker in self.model_portfolio.all_tickers():
-            mp_quantity = self.model_portfolio.get_quantity(mp_ticker)
-            live_quantity = self.live_portfolio.get_quantity(mp_ticker)
-            ticker_delta = mp_quantity - live_quantity
-            if not options.allow_fractional_shares:
-                if options.rounding_behavior == RoundingBehavior.NEAREST:
-                    ticker_delta = round(ticker_delta)
-                elif options.rounding_behavior == RoundingBehavior.UP:
-                    ticker_delta = math.ceil(ticker_delta)
-                elif options.rounding_behavior == RoundingBehavior.DOWN:
-                    ticker_delta = math.floor(ticker_delta)
-                else:
-                    raise Exception("Rounding behavior required but not specified")
-            delta_shares[mp_ticker] = ticker_delta
-
-        for live_ticker in self.live_portfolio.all_tickers():
-            if not self.model_portfolio.contains_ticker(live_ticker):
-                delta_shares[live_ticker] = -1 * self.live_portfolio.get_quantity(live_ticker)
-        return delta_shares
-
-    def build_rebalanced_portfolio(self) -> Portfolio:
-        instructions = self.build_rebalance_instructions()
-        rebalanced_portfolio = Portfolio()
-        for ticker in self.live_portfolio.all_tickers():
-            adjusted_quantity = self.live_portfolio.get_quantity(ticker)
-            if ticker in instructions:
-                adjusted_quantity += instructions[ticker]
-                del instructions[ticker]
-            if adjusted_quantity != 0.0:
-                rebalanced_portfolio.add_position(Position(ticker, adjusted_quantity))
-        for ticker in instructions.keys():
-            rebalanced_portfolio.add_position(Position(ticker, instructions[ticker]))
-        return rebalanced_portfolio
 
 def build_price_lookup(implementation_records: dict) -> PriceLookup:
     prices = PriceLookup()
@@ -157,7 +32,7 @@ def build_live_portfolio(implementation_lookup: dict) -> Portfolio:
     return portfolio
 
 def build_model_portfolio(options: RebalanceOptions, summary_records: list, implementation_lookup: dict, prices: PriceLookup) -> Portfolio:
-    builder = ModelPortfolioBuilder(options.desired_total_value, prices)
+    builder = ModelPortfolioBuilder(options.desired_total_value, prices, PERCENT_TOLERANCE)
     for sr in summary_records:
         if sr.target_percentage > 0:
             builder.add_model_position(ModelPosition(sr.ticker, sr.target_percentage))
@@ -201,8 +76,6 @@ def validate_and_value_summary_records(summary_records: list, implementation_loo
     total_ticker_values = sum([summary_tickers_used[ticker] for ticker in summary_tickers_used.keys()])
     if abs(total_summary_values - total_ticker_values) > VALUE_TOLERANCE:
         raise Exception(f"Total summary values ({total_summary_values}) does not equal total instument values ({total_ticker_values})")
-    
-    return total_summary_values
 
 def capture_desired_portfolio_value(live_portfolio_value: float) -> float:
     print("")
@@ -441,11 +314,11 @@ if __name__ == '__main__':
 
     summary_records = capture_summary_records()
     implementation_lookup = capture_implementation_records()
-    live_portfolio_value = validate_and_value_summary_records(summary_records, implementation_lookup)
+    validate_and_value_summary_records(summary_records, implementation_lookup)
     prices = build_price_lookup(implementation_lookup)
     live_portfolio = build_live_portfolio(implementation_lookup)
     
-    options = capture_rebalance_options(live_portfolio_value)
+    options = capture_rebalance_options(live_portfolio.calc_total_value(prices))
     model_portfolio = build_model_portfolio(options, summary_records, implementation_lookup, prices)
 
     rebalancer = PortfolioRebalancer(options)
