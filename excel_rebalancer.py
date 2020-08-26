@@ -316,7 +316,7 @@ def output_rebalanced_portfolio_summary(rebalancer: PortfolioRebalancer):
     live_value_str = live_value_str.rjust(max_total_value_len)
     print(f"Value of rebalanced portfolio:\t${rebalanced_value_str}\n"
         f"\tvs target value:\t${target_value_str}\n"
-        f"\tvs current value:\t${live_value_str}\n")
+        f"\tvs current value:\t${live_value_str}")
 
 def output_rebalance_options(options: RebalanceOptions):
     allow_share_exchanges = "YES" if rebalancer.options.allow_share_exchanges else "NO"
