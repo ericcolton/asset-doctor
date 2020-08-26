@@ -4,7 +4,7 @@ Copyright (c) 2020 Eric Colton
 '''
 
 from collections import namedtuple
-from . import PriceLookup
+from .price_lookup import PriceLookup
 
 Position = namedtuple('Position', ['ticker', 'quantity'])
 

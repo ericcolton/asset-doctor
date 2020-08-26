@@ -7,7 +7,8 @@ import math
 import heapq
 from enum import Enum
 from collections import namedtuple, defaultdict
-from . import Portfolio, Position, PriceLookup
+from .portfolio import Portfolio, Position
+from .price_lookup import PriceLookup
 
 DEFAULT_TOLERANCE = .01
 
