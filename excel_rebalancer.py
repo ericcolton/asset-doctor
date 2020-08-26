@@ -254,6 +254,19 @@ def capture_implementation_records():
         else:
             raise Exception("Unexpected reading past line 3")
 
+def build_formatted_instruction(value: float, instr: RebalanceInstruction, options: RebalanceOptions) -> FormattedRebalanceInstruction:
+    quantity_str = f"{abs(instr.quantity):,.2f}" if rebalancer.options.allow_fractional_shares else f"{int(abs(instr.quantity)):,}"
+    op = instr.transaction_type.name
+    sign = "-" if instr.transaction_type == TransactionType.SELL else ""
+    plural_s = "" if abs(instr.quantity) == 1.0 else "s"
+    value_str = f"{abs(value):,.2f}"
+    if instr.transaction_type == TransactionType.EXCHANGE:
+        counter_quantity_str = f"{abs(instr.counter_quantity):,.2f}"
+        exchange_for_str = f"\tfor\t{instr.counter_ticker}\t{counter_quantity_str}\tshares"
+    else:
+        exchange_for_str = ""
+    return FormattedRebalanceInstruction(instr.ticker, op, quantity_str, plural_s, sign, value_str, exchange_for_str)
+
 def output_rebalance_instructions(rebalancer: PortfolioRebalancer) -> None:
     instructions = rebalancer.build_rebalance_instructions()
     if len(instructions) == 0:
@@ -261,27 +274,23 @@ def output_rebalance_instructions(rebalancer: PortfolioRebalancer) -> None:
         return
     
     print("Rebalance Instructions:")
-    sorter = defaultdict(set)
+    sorter = defaultdict(dict)
     for instr in instructions:
         if instr.quantity != 0:
-            value = rebalancer.prices.get_price(instr.ticker) * instr.quantity
-            sorter[abs(value)].add(instr)
+            value = abs(rebalancer.prices.get_price(instr.ticker) * instr.quantity)
+            sorter[instr.transaction_type][value] = instr
 
+    # Sort instructions by transaction type and then value
     formatted_instructions = []
-    for value in sorted(sorter.keys()):
-        for instr in sorter[value]:
-            quantity_str = f"{abs(instr.quantity):,.2f}" if rebalancer.options.allow_fractional_shares else f"{int(abs(instr.quantity)):,}"
-            value = abs(value)
-            op = instr.transaction_type.name
-            sign = "-" if instr.transaction_type == TransactionType.SELL else ""
-            plural_s = "" if abs(instr.quantity) == 1.0 else "s"
-            value_str = f"{abs(value):,.2f}"
-            if instr.transaction_type == TransactionType.EXCHANGE:
-                counter_quantity_str = f"{abs(instr.counter_quantity):,.2f}"
-                exchange_for_str = f"\tfor\t{instr.counter_ticker}\t{counter_quantity_str}\tshares"
-            else:
-                exchange_for_str = ""
-            formatted_instructions.append(FormattedRebalanceInstruction(instr.ticker, op, quantity_str, plural_s, sign, value_str, exchange_for_str))
+    exchanges = sorter[TransactionType.EXCHANGE]
+    for value, instr in sorted(exchanges.items(), key=lambda x: x[0], reverse=True):
+        formatted_instructions.append(build_formatted_instruction(value, instr, rebalancer.options))
+    sells = sorter[TransactionType.SELL]
+    for value, instr in sorted(sells.items(), key=lambda x: x[0], reverse=True):
+        formatted_instructions.append(build_formatted_instruction(value, instr, rebalancer.options))
+    buys = sorter[TransactionType.BUY]
+    for value, instr in sorted(buys.items(), key=lambda x: x[0], reverse=True):
+        formatted_instructions.append(build_formatted_instruction(value, instr, rebalancer.options))
 
     print("")
     max_value_len = max([len(i.value_str) for i in formatted_instructions])
