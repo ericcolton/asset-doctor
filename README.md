@@ -20,11 +20,11 @@ This tool supports the following rebalancing styles:
 
 ### excel_rebalancer.py
 
-*excel_rebalancer.py* is an example command-line oriented application that wraps *Portfolio Rebalancer*.  This assumes a very specific spreadsheet format that details your model and "live" portfolios, as well as asset prices.  Maybe someday I'll get around to generalizing this format.
+*excel_rebalancer.py* is an example command-line-oriented program that wraps *Portfolio Rebalancer*.  It assumes a very specific spreadsheet format that details your "model" and "current" portfolios, as well as asset prices.  (This format is not at all standard - I created this so I can copy/paste directly from a spreadsheet I created.)
 
 Expected format for *excel_rebalancer.py*:
 
-The first input by the program should be formatted like the spreadsheet diagramed below.  Copy-paste the whole thing directly into the console.  *Do not* include the header titles.  The program uses this to determine the model portfolio, and uses the other data to validate the "balanced" and "actual" amounts later on.
+The first input requested via *stdin* should be a tab-formatted like the spreadsheet diagramed below.  (Do not include the header titles).  The program uses this to determine the model portfolio, and uses the other data to validate the "balanced" and "actual" portfolios later on.
 
 **Summary Rows:**
 
@@ -37,7 +37,7 @@ The first input by the program should be formatted like the spreadsheet diagrame
 | XLE    | 5%       | $493.92    | $255.68    |
 | MUB    | 29%      | $2,859.36  | $3,160.02  |
 
-The next input *excel_rebalancer.py* wants is the quantities and prices of the positions in the "current" portfolio.  These need to be in the following 3-row format.  Note that the listing of securities extends horizonatally.
+The next input *excel_rebalancer.py* requires are the quantities and prices of the positions in the "current" portfolio.  These need to be in the following 3-row tab-delimited format.  Note that the listing of securities extends horizonatally.
 
 | VTI | VTI     | VEA | VEA    | VWO | VWO    | VIG | VIG     | XLE | XLE    | MUB | MUB     |
 |-----|---------|-----|--------|-----|--------|-----|---------|-----|--------|-----|---------|
@@ -46,7 +46,12 @@ The next input *excel_rebalancer.py* wants is the quantities and prices of the p
 
 Each security consists of two rows.  The "ticker" on the first row for each column pair must match.  On the second row is the share price, and on the third row is the current portfolio's position (# of shares) in that security.
 
-Following these inputs, the program inquires if it can suggest rebalance instructions based on share exchanges (e.g. Vanguard mutual funds), whether or not you wish to infuse or withdraw cash, and/or whether or not purchase or sale of fractional shares is allowed.
+Following these inputs, the program asks about the following options:
+
+* Whether or not rebalance instructions can based on share exchanges (e.g. Vanguard mutual funds)
+* Whether or not rebalancing should take into account an infusion or withdraw of cash
+* Whether or not purchase or sale of fractional shares is allowed
+* If fractional shares are not allowed, then the rounding behavior can be customized.
 
 The program generates a report including buy, sell, and/or exhange instructions and a summary of the rebalanced portfolio.
 
