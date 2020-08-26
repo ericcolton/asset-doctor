@@ -86,7 +86,8 @@ def capture_desired_portfolio_value(live_portfolio_value: float) -> float:
     print(f"Your current portfolio value is ${live_portfolio_value:,.2f}.\n"
     "Please input your desired total value.\n"
     "(Prefix '+' or '-' to specify an offset from the portfolio's current value.)\n"
-    "Press return to default to the portfolio's current value:")
+    "Press return to default to the portfolio's current value:", end='')
+    sys.stdout.flush()
     line = sys.stdin.readline().rstrip()
     if line == "":
         return live_portfolio_value
@@ -104,11 +105,13 @@ def capture_desired_portfolio_value(live_portfolio_value: float) -> float:
 
 def capture_allow_share_exchanges() -> bool:
     print("Allow share exchanges (yes/NO)?: ", end = '')
+    sys.stdout.flush()
     line = sys.stdin.readline()
     return line[0].lower() == 'y'
 
 def capture_allow_fractional_shares() -> bool:
     print("Allow fractional shares (yes/NO)?: ", end = '')
+    sys.stdout.flush()
     line = sys.stdin.readline()
     return line[0].lower() == 'y'
 
@@ -118,8 +121,8 @@ def capture_rounding_behavior() -> RoundingBehavior:
         "\t'+'\tAlways round up: Rebalancing may require additional cash\n"
         "\t'-'\tAlways round down: Rebalancing may leave cash uninveseted\n"
         "\t''\tRound to nearest: Rebalancing may either leave or require additional cash\n"
-
         "Enter '+', '-', or press return for the default behavior: ", end='')
+    sys.stdout.flush()
     line = sys.stdin.readline().rstrip()
     if line == "":
         return RoundingBehavior.NEAREST
