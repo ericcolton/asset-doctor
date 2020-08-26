@@ -26,10 +26,10 @@ class RoundingBehavior(Enum):
 
 class PortfolioRebalancer:
 
-    def __init__(self, prices: PriceLookup, options: RebalanceOptions, tolarance: float = DEFAULT_TOLERANCE):
+    def __init__(self, prices: PriceLookup, options: RebalanceOptions, tolerance: float = DEFAULT_TOLERANCE):
         self.prices = prices
         self.options = options
-        self.tolarance = tolarance
+        self.tolerance = tolerance
         self.live_portfolio = None
         self.model_portfolio = None
 
@@ -57,11 +57,15 @@ class PortfolioRebalancer:
                     delta = math.floor(delta)
                 else:
                     raise Exception("Rounding behavior required but not specified")
+            if abs(delta) < self.tolerance:
+                continue
             deltas[mp_ticker] = delta
 
         for live_ticker in self.live_portfolio.all_tickers():
             if not self.model_portfolio.contains_ticker(live_ticker):
-                deltas[live_ticker] = -1 * self.live_portfolio.get_quantity(live_ticker)
+                quantity = self.live_portfolio.get_quantity(live_ticker)
+                if quantity > self.tolerance:
+                    deltas[live_ticker] = -quantity
         
         instructions = []
         if self.options.allow_share_exchanges:
@@ -71,11 +75,6 @@ class PortfolioRebalancer:
             transaction_type = TransactionType.BUY if quantity > 0 else TransactionType.SELL
             instructions.append(RebalanceInstruction(transaction_type, ticker, abs(quantity), None, None))
         return instructions
-
-        # for live_ticker in live_portfolio.all_tickers():
-        #     if not model_portfolio.contains_ticker(live_ticker):
-        #         instructions.append(RebalanceInstruction(live_ticker, TransactionType.SELL, self.live_portfolio.get_quantity(live_ticker), None, None))
-        # return instructions
 
     def build_rebalanced_portfolio(self) -> Portfolio:
         instructions = self.build_rebalance_instructions()
@@ -100,6 +99,14 @@ class PortfolioRebalancer:
                 rebalanced_portfolio.add_position(Position(ticker, quantity))
         return rebalanced_portfolio
 
+    def validate(self):
+        validator = PortfolioRebalancer(self.prices, self.options)
+        validator.set_model_portfolio(self.model_portfolio)
+        validator.set_live_portfolio(self.build_rebalanced_portfolio())
+        instructions = validator.build_rebalance_instructions()
+        if len(instructions) > 0:
+            raise Exception(f"Live portfolio did not rebalance cleanly (re-running the rebalance still generated {len(instructions)} rebalance instructions)")
+
     def __populate_exchange_trades(self, deltas: dict, instructions: list):
         buys, sells = [], []
         for ticker, quantity in deltas.items():
@@ -122,12 +129,12 @@ class PortfolioRebalancer:
             if sell_value > buy_value:
                 instructions.append(RebalanceInstruction(TransactionType.EXCHANGE, sell_ticker, buy_value / sell_price, buy_ticker, buy_value / buy_price))
                 residual_sell_value = sell_value - buy_value
-                if residual_sell_value / sell_value > self.tolarance:
+                if residual_sell_value / sell_value > self.tolerance:
                     heapq.heappush(sells, (-residual_sell_value, sell_ticker))
             else:
                 instructions.append(RebalanceInstruction(TransactionType.EXCHANGE, sell_ticker, sell_value / sell_price, buy_ticker, sell_value / buy_price))
                 residual_buy_value = buy_value - sell_value
-                if residual_buy_value / buy_value > self.tolarance:
+                if residual_buy_value / buy_value > self.tolerance:
                     heapq.heappush(buys, (-residual_buy_value, buy_ticker))
 
         # re-populate deltas with tickers that couldn't be exchanged

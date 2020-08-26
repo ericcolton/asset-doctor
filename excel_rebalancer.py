@@ -352,4 +352,5 @@ if __name__ == '__main__':
     rebalancer = PortfolioRebalancer(prices, options)
     rebalancer.set_live_portfolio(live_portfolio)
     rebalancer.set_model_portfolio(model_portfolio)
+    rebalancer.validate()
     output_rebalance_summary(rebalancer)
