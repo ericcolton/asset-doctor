@@ -1,5 +1,5 @@
 # asset-doctor
-Simple Financial Portfolio tools in Python3
+Simple financial portfolio tools in Python3
 
 Copyright (c) 2020 Eric Colton
 
