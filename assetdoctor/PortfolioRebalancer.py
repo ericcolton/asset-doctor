@@ -4,12 +4,15 @@ Copyright (c) 2020 Eric Colton
 '''
 
 import math
+import heapq
 from enum import Enum
-from collections import namedtuple, deque, defaultdict
-from . import Portfolio, Position
+from collections import namedtuple, defaultdict
+from . import Portfolio, Position, PriceLookup
+
+DEFAULT_TOLERANCE = .01
 
 RebalanceOptions = namedtuple('RebalanceOptions', ['target_total_value', 'allow_share_exchanges', 'allow_fractional_shares', 'rounding_behavior'])
-RebalanceInstruction = namedtuple('RebalanceInstruction', ['ticker', 'transaction_type', 'quantity', 'exchange_ticker', 'exchange_quantity'])
+RebalanceInstruction = namedtuple('RebalanceInstruction', ['transaction_type', 'ticker', 'quantity', 'counter_ticker', 'counter_quantity'])
 
 class TransactionType(Enum):
     BUY = 'BUY'
@@ -23,8 +26,10 @@ class RoundingBehavior(Enum):
 
 class PortfolioRebalancer:
 
-    def __init__(self, options: RebalanceOptions):
+    def __init__(self, prices: PriceLookup, options: RebalanceOptions, tolarance: float = DEFAULT_TOLERANCE):
+        self.prices = prices
         self.options = options
+        self.tolarance = tolarance
         self.live_portfolio = None
         self.model_portfolio = None
 
@@ -38,34 +43,39 @@ class PortfolioRebalancer:
         if not (self.live_portfolio and self.model_portfolio):
             raise Exception("live_portfolio and model_portfolio must both be set")
 
-        instructions = []
-        if self.options.allow_share_exchanges:
-            live_portfolio = self.live_portfolio.deepcopy()
-            model_portfolio = self.model_portfolio.deepcopy()
-        else:
-            live_portfolio = self.live_portfolio
-            model_portfolio = self.model_portfolio
-
+        deltas = defaultdict(float)
         for mp_ticker in self.model_portfolio.all_tickers():
             mp_quantity = self.model_portfolio.get_quantity(mp_ticker)
             live_quantity = self.live_portfolio.get_quantity(mp_ticker)
-            ticker_delta = mp_quantity - live_quantity
+            delta = mp_quantity - live_quantity
             if not self.options.allow_fractional_shares:
                 if self.options.rounding_behavior == RoundingBehavior.NEAREST:
-                    ticker_delta = round(ticker_delta)
+                    delta = round(delta)
                 elif self.options.rounding_behavior == RoundingBehavior.UP:
-                    ticker_delta = math.ceil(ticker_delta)
+                    delta = math.ceil(delta)
                 elif self.options.rounding_behavior == RoundingBehavior.DOWN:
-                    ticker_delta = math.floor(ticker_delta)
+                    delta = math.floor(delta)
                 else:
                     raise Exception("Rounding behavior required but not specified")
-            direction = TransactionType.BUY if ticker_delta > 0 else TransactionType.SELL
-            instructions.append(RebalanceInstruction(mp_ticker, direction, abs(ticker_delta), None, None))
+            deltas[mp_ticker] = delta
 
-        for live_ticker in live_portfolio.all_tickers():
-            if not model_portfolio.contains_ticker(live_ticker):
-                instructions.append(RebalanceInstruction(live_ticker, TransactionType.SELL, self.live_portfolio.get_quantity(live_ticker), None, None))
+        for live_ticker in self.live_portfolio.all_tickers():
+            if not self.model_portfolio.contains_ticker(live_ticker):
+                deltas[live_ticker] = -1 * self.live_portfolio.get_quantity(live_ticker)
+        
+        instructions = []
+        if self.options.allow_share_exchanges:
+            self.__populate_exchange_trades(deltas, instructions)
+   
+        for ticker, quantity in deltas.items():
+            transaction_type = TransactionType.BUY if quantity > 0 else TransactionType.SELL
+            instructions.append(RebalanceInstruction(transaction_type, ticker, abs(quantity), None, None))
         return instructions
+
+        # for live_ticker in live_portfolio.all_tickers():
+        #     if not model_portfolio.contains_ticker(live_ticker):
+        #         instructions.append(RebalanceInstruction(live_ticker, TransactionType.SELL, self.live_portfolio.get_quantity(live_ticker), None, None))
+        # return instructions
 
     def build_rebalanced_portfolio(self) -> Portfolio:
         instructions = self.build_rebalance_instructions()
@@ -80,7 +90,7 @@ class PortfolioRebalancer:
                 rebalanced[i.ticker] -= i.quantity
             elif i.transaction_type == TransactionType.EXCHANGE:
                 rebalanced[i.ticker] -= i.quantity
-                rebalanced[i.exchange_ticker] += i.exchange_quantity
+                rebalanced[i.counter_ticker] += i.counter_quantity
             else:
                 raise Exception(f"Unexpected transaction type: '{i.transaction_type}'")
             
@@ -89,3 +99,42 @@ class PortfolioRebalancer:
             if quantity != 0.0:
                 rebalanced_portfolio.add_position(Position(ticker, quantity))
         return rebalanced_portfolio
+
+    def __populate_exchange_trades(self, deltas: dict, instructions: list):
+        buys, sells = [], []
+        for ticker, quantity in deltas.items():
+            value = abs(quantity * self.prices.get_price(ticker))
+            if quantity < 0:
+                sells.append((-value, ticker))
+            else:
+                buys.append((-value, ticker))
+        heapq.heapify(buys)
+        heapq.heapify(sells)
+        
+        while len(buys) > 0 and len(sells) > 0:
+            buy = heapq.heappop(buys)
+            buy_value, buy_ticker = abs(buy[0]), buy[1], 
+            buy_price = self.prices.get_price(buy_ticker)
+            sell = heapq.heappop(sells)                
+            sell_value, sell_ticker = abs(sell[0]), sell[1]
+            sell_price = self.prices.get_price(sell_ticker)
+
+            if sell_value > buy_value:
+                instructions.append(RebalanceInstruction(TransactionType.EXCHANGE, sell_ticker, buy_value / sell_price, buy_ticker, buy_value / buy_price))
+                residual_sell_value = sell_value - buy_value
+                if residual_sell_value / sell_value > self.tolarance:
+                    heapq.heappush(sells, (-residual_sell_value, sell_ticker))
+            else:
+                instructions.append(RebalanceInstruction(TransactionType.EXCHANGE, sell_ticker, sell_value / sell_price, buy_ticker, sell_value / buy_price))
+                residual_buy_value = buy_value - sell_value
+                if residual_buy_value / buy_value > self.tolarance:
+                    heapq.heappush(buys, (-residual_buy_value, buy_ticker))
+
+        # re-populate deltas with tickers that couldn't be exchanged
+        deltas.clear()
+        for buy in buys:
+            buy_value, buy_ticker = abs(buy[0]), buy[1]
+            deltas[buy_ticker] = buy_value / self.prices.get_price(buy_ticker)
+        for sell in sells:
+            sell_value, sell_ticker = abs(sell[0]), sell[1]
+            deltas[sell_ticker] = -sell_value / self.prices.get_price(sell_ticker)

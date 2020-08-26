@@ -15,7 +15,7 @@ PERCENT_TOLERANCE = 0.01
 
 SummaryRecord = namedtuple('Record', ['ticker', 'target_percentage', 'balanced_amount', 'actual_amount'])
 ImplementationRecord = namedtuple('ImplementationRecord', ['ticker', 'price', 'quantity'])
-FormattedRebalanceInstruction = namedtuple('FormattedRebalanceInstruction', ['ticker','op','quantity_str', 'plural_s', 'sign', 'value_str'])
+FormattedRebalanceInstruction = namedtuple('FormattedRebalanceInstruction', ['ticker','op','quantity_str', 'plural_s', 'sign', 'value_str', 'exchange_for_str'])
 
 class NoImplmentationRecordException(Exception):
     pass
@@ -254,7 +254,7 @@ def capture_implementation_records():
         else:
             raise Exception("Unexpected reading past line 3")
 
-def output_rebalance_instructions(rebalancer: PortfolioRebalancer, prices: PriceLookup) -> None:
+def output_rebalance_instructions(rebalancer: PortfolioRebalancer) -> None:
     instructions = rebalancer.build_rebalance_instructions()
     if len(instructions) == 0:
         print("No rebalance actions required.")
@@ -264,10 +264,8 @@ def output_rebalance_instructions(rebalancer: PortfolioRebalancer, prices: Price
     sorter = defaultdict(set)
     for instr in instructions:
         if instr.quantity != 0:
-            value = prices.get_price(instr.ticker) * instr.quantity
-            if instr.transaction_type == TransactionType.SELL:
-                value *= -1
-            sorter[value].add(instr)
+            value = rebalancer.prices.get_price(instr.ticker) * instr.quantity
+            sorter[abs(value)].add(instr)
 
     formatted_instructions = []
     for value in sorted(sorter.keys()):
@@ -278,7 +276,12 @@ def output_rebalance_instructions(rebalancer: PortfolioRebalancer, prices: Price
             sign = "-" if instr.transaction_type == TransactionType.SELL else ""
             plural_s = "" if abs(instr.quantity) == 1.0 else "s"
             value_str = f"{abs(value):,.2f}"
-            formatted_instructions.append(FormattedRebalanceInstruction(instr.ticker, op, quantity_str, plural_s, sign, value_str))
+            if instr.transaction_type == TransactionType.EXCHANGE:
+                counter_quantity_str = f"{abs(instr.counter_quantity):,.2f}"
+                exchange_for_str = f"\tfor\t{instr.counter_ticker}\t{counter_quantity_str}\tshares"
+            else:
+                exchange_for_str = ""
+            formatted_instructions.append(FormattedRebalanceInstruction(instr.ticker, op, quantity_str, plural_s, sign, value_str, exchange_for_str))
 
     print("")
     max_value_len = max([len(i.value_str) for i in formatted_instructions])
@@ -289,18 +292,14 @@ def output_rebalance_instructions(rebalancer: PortfolioRebalancer, prices: Price
             sign_justified = "-" if i.sign == '-' else " "
         else:
             sign_justified = ""
-        print(f"\t{i.ticker}\t{i.op}\t{i.quantity_str}\tshare{i.plural_s}\t({sign_justified}${value_justified})")
+        print(f"\t{i.ticker}\t{i.op}\t{i.quantity_str}\tshare{i.plural_s}\t({sign_justified}${value_justified}){i.exchange_for_str}")
 
-def output_rebalance_summary(rebalancer: PortfolioRebalancer, prices: PriceLookup) -> None:
-    print("")
-    output_rebalance_instructions(rebalancer, prices)
-    print("")
-
-    rebalanced_value = rebalancer.build_rebalanced_portfolio().calc_total_value(prices)
+def output_rebalanced_portfolio_summary(rebalancer: PortfolioRebalancer):
+    rebalanced_value = rebalancer.build_rebalanced_portfolio().calc_total_value(rebalancer.prices)
     rebalanced_value_str = f"{rebalanced_value:,.2f}"
-    target_value = rebalancer.model_portfolio.calc_total_value(prices)
+    target_value = rebalancer.model_portfolio.calc_total_value(rebalancer.prices)
     target_value_str = f"{target_value:,.2f}"
-    live_value = rebalancer.live_portfolio.calc_total_value(prices)
+    live_value = rebalancer.live_portfolio.calc_total_value(rebalancer.prices)
     live_value_str = f"{live_value:,.2f}"
     max_total_value_len = max(len(i) for i in [rebalanced_value_str, target_value_str, live_value_str])
     rebalanced_value_str = rebalanced_value_str.rjust(max_total_value_len)
@@ -310,6 +309,7 @@ def output_rebalance_summary(rebalancer: PortfolioRebalancer, prices: PriceLooku
         f"\tvs target value:\t${target_value_str}\n"
         f"\tvs current value:\t${live_value_str}\n")
 
+def output_rebalance_options(options: RebalanceOptions):
     allow_share_exchanges = "YES" if rebalancer.options.allow_share_exchanges else "NO"
     print("Options Applied:")
     print(f"\tAllow Share Exchanges: {allow_share_exchanges}")
@@ -318,8 +318,15 @@ def output_rebalance_summary(rebalancer: PortfolioRebalancer, prices: PriceLooku
     else:
         print("\tFractional Shares: NO")
         print(f"\tRounding Behavior: {rebalancer.options.rounding_behavior.name}")
-    print("")
 
+def output_rebalance_summary(rebalancer: PortfolioRebalancer) -> None:
+    print("")
+    output_rebalance_instructions(rebalancer)
+    print("")
+    output_rebalanced_portfolio_summary(rebalancer)
+    print("")
+    output_rebalance_options(rebalancer.options)
+    print("")
 
 if __name__ == '__main__':
     print("\nWelcome to Portfolio Rebalancer\n")
@@ -333,7 +340,7 @@ if __name__ == '__main__':
     options = capture_rebalance_options(live_portfolio.calc_total_value(prices))
     model_portfolio = build_model_portfolio(options, summary_records, implementation_lookup, prices)
 
-    rebalancer = PortfolioRebalancer(options)
+    rebalancer = PortfolioRebalancer(prices, options)
     rebalancer.set_live_portfolio(live_portfolio)
     rebalancer.set_model_portfolio(model_portfolio)
-    output_rebalance_summary(rebalancer, prices)
+    output_rebalance_summary(rebalancer)
