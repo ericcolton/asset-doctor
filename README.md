@@ -41,7 +41,7 @@ The next input *excel_rebalancer.py* wants is the quantities and prices of the p
 
 | VTI | VTI     | VEA | VEA    | VWO | VWO    | VIG | VIG     | XLE | XLE    | MUB | MUB     |
 |-----|---------|-----|--------|-----|--------|-----|---------|-----|--------|-----|---------|
-|     | $162.69 |     | $40.35 |     | $42.88 |     | $122.90 |     | $37.51 |     | $116.62 |
+|     | $16.26  |     | $4.03  |     | $4.28  |     | $12.29  |     | $3.75  |     | $11.66  |
 |     | 203     |     | 337    |     | 267    |     | 52      |     | 68     |     | 271     |
 
 Each security consists of two rows.  The "ticker" on the first row for each column pair must match.  On the second row is the share price, and on the third row is the current portfolio's position (# of shares) in that security.
