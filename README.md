@@ -1,6 +1,8 @@
 # asset-doctor
 Simple Financial Portfolio tools in Python3
 
+Copyright (c) 2020 Eric Colton
+
 ## Portfolio Rebalancer
 
 The markets may have made you rich but something feels lacking.  Will money not bring true happiness?  Unfortunately, true happiness can only be achieved with beauty.  A beautiful perfectly-weigthed portfolio.
@@ -70,6 +72,41 @@ Options Applied:
 ```
 
 ## Fractional-Share Rebalancing Report (Example)
+```
+Rebalance Instructions:
 
+        MUB     SELL    25.99   shares  (-$303.10)
+        VTI     SELL    3.07    shares  (-$ 49.98)
+        VIG     SELL    3.55    shares  (-$ 43.35)
+        XLE     BUY     63.35   shares  ( $237.55)
+        VEA     BUY     29.66   shares  ( $119.53)
+        VWO     BUY     9.19    shares  ( $ 39.35)
 
+Value of rebalanced portfolio:  $9,850.91
+        vs target value:        $9,850.91
+        vs current value:       $9,850.91
+
+Options Applied:
+        Allow Share Exchanges: NO
+        Fractional Shares: YES
+```
+
+## Rebalancing with Share Exchanges (Example)
+```
+Rebalance Instructions:
+
+        MUB     EXCHANGE        20.37   shares  ($237.55)       for     XLE     63.35   shares
+        MUB     EXCHANGE        5.62    shares  ($ 65.55)       for     VEA     16.27   shares
+        VTI     EXCHANGE        3.07    shares  ($ 49.98)       for     VEA     12.40   shares
+        VIG     EXCHANGE        3.23    shares  ($ 39.35)       for     VWO     9.19    shares
+        VIG     EXCHANGE        0.33    shares  ($  4.00)       for     VEA     0.99    shares
+
+Value of rebalanced portfolio:  $9,850.91
+        vs target value:        $9,850.91
+        vs current value:       $9,850.91
+
+Options Applied:
+        Allow Share Exchanges: YES
+        Fractional Shares: YES
+```
 
