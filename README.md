@@ -5,11 +5,9 @@ Copyright (c) 2020 Eric Colton
 
 ## Portfolio Rebalancer
 
-The markets may have made you rich but something feels lacking.  Will money not bring true happiness?  Unfortunately, true happiness can only be achieved with beauty.  A beautiful perfectly-weigthed portfolio.
+Use *portfolio_rebalancer.py* to rebalance your financial portfolio with ease.
 
-Use *portfolio_rebalancer.py* to rebalance your portfolio with ease.
-
-This tool compares your financial portfolio with a hypothetical "model" portfolio with which you have populated with securities with ideal weights.
+This tool compares your financial portfolio with a hypothetical "model" portfolio with which you have populated with securities and associated ideal weights.
 
 This tool supports the following rebalancing styles:
 
